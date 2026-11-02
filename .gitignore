@@ -1,0 +1,9 @@
+AGENTS.md
+ИКБО-40-25.pdf
+roadmap.md
+
+# Артефакты сборки Go
+/bin/
+/visualiser
+*.exe
+*.test
