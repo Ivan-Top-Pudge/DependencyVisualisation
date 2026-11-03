@@ -1,0 +1,4 @@
+{"name":"demo","vers":"0.1.0","deps":[],"yanked":true}
+{"name":"demo","vers":"0.2.0","deps":[{"name":"alias","req":"^1","package":"serde"}],"yanked":false}
+{"name":"demo","vers":"0.3.0","deps":[{"name":"log","req":"^0.4","package":null}],"yanked":false}
+{"name":"demo","vers":"0.4.0","deps":[{"name":"itoa","req":"^1"}],"yanked":false}
