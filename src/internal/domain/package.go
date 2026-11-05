@@ -16,3 +16,17 @@ type Dependency struct {
 	Requirement string `json:"req"`
 	PackageName string `json:"package,omitempty"` // Настоящее имя при переименовании зависимости.
 }
+
+// PackageID различает вершины графа по имени и выбранной версии пакета.
+type PackageID struct {
+	Name    string
+	Version string
+}
+
+// Graph хранит корень, пакеты и направленные ребра к их зависимостям.
+// Зависимости в Nodes содержат исходные метаданные; границы обхода отражены в Edges.
+type Graph struct {
+	Root  PackageID
+	Nodes map[PackageID]PackageVersion
+	Edges map[PackageID][]PackageID
+}

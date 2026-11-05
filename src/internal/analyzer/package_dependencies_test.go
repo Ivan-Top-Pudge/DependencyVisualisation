@@ -11,6 +11,7 @@ import (
 	"testing"
 
 	"github.com/Ivan-Top-Pudge/DependencyVisualisation/src/internal/analyzer"
+	"github.com/Ivan-Top-Pudge/DependencyVisualisation/src/internal/cargo"
 	"github.com/Ivan-Top-Pudge/DependencyVisualisation/src/internal/domain"
 )
 
@@ -23,7 +24,7 @@ func TestPackageDependencies(t *testing.T) {
 	const skippedVersions = `{"name":"demo","vers":"9.0.0","deps":[],"yanked":true}
 {"name":"demo","vers":"10.0.0-beta","deps":[],"yanked":false}`
 	server := newAnalyzerServer(t, http.StatusOK, string(data)+skippedVersions)
-	got, err := analyzer.New(server.URL).PackageDependencies("demo")
+	got, err := analyzer.New(cargo.NewClient(server.URL)).PackageDependencies("demo")
 	if err != nil {
 		t.Fatalf("PackageDependencies() failed: %v", err)
 	}
@@ -39,7 +40,7 @@ func TestPackageDependencies(t *testing.T) {
 // TestPackageDependenciesHTTPError проверяет передачу ошибки загрузки с контекстом анализатора.
 func TestPackageDependenciesHTTPError(t *testing.T) {
 	server := newAnalyzerServer(t, http.StatusNotFound, "not JSON")
-	got, err := analyzer.New(server.URL).PackageDependencies("demo")
+	got, err := analyzer.New(cargo.NewClient(server.URL)).PackageDependencies("demo")
 	if err == nil || !strings.Contains(err.Error(), "404") {
 		t.Fatalf("PackageDependencies() error = %v, want HTTP 404", err)
 	}
@@ -54,7 +55,7 @@ func TestPackageDependenciesHTTPError(t *testing.T) {
 // TestPackageDependenciesInvalidJSON проверяет сохранение типа ошибки разбора ответа.
 func TestPackageDependenciesInvalidJSON(t *testing.T) {
 	server := newAnalyzerServer(t, http.StatusOK, "not JSON")
-	got, err := analyzer.New(server.URL).PackageDependencies("demo")
+	got, err := analyzer.New(cargo.NewClient(server.URL)).PackageDependencies("demo")
 	var syntaxErr *json.SyntaxError
 	if !errors.As(err, &syntaxErr) {
 		t.Fatalf("PackageDependencies() error = %v, want a JSON syntax error", err)
@@ -77,7 +78,7 @@ func TestPackageDependenciesNoRelease(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			server := newAnalyzerServer(t, http.StatusOK, tt.body)
-			got, err := analyzer.New(server.URL).PackageDependencies("demo")
+			got, err := analyzer.New(cargo.NewClient(server.URL)).PackageDependencies("demo")
 			if err == nil || !strings.Contains(err.Error(), "no non-yanked release versions") {
 				t.Fatalf("PackageDependencies() error = %v, want no suitable release", err)
 			}
@@ -92,7 +93,7 @@ func TestPackageDependenciesNoRelease(t *testing.T) {
 func TestPackageDependenciesInvalidVersion(t *testing.T) {
 	const body = `{"name":"demo","vers":"invalid","deps":[],"yanked":false}`
 	server := newAnalyzerServer(t, http.StatusOK, body)
-	got, err := analyzer.New(server.URL).PackageDependencies("demo")
+	got, err := analyzer.New(cargo.NewClient(server.URL)).PackageDependencies("demo")
 	if err == nil || !strings.Contains(err.Error(), "invalid semantic version") {
 		t.Fatalf("PackageDependencies() error = %v, want an invalid version error", err)
 	}
@@ -103,7 +104,7 @@ func TestPackageDependenciesInvalidVersion(t *testing.T) {
 
 // TestAnalyzerNewInvalidURL проверяет отложенную проверку URL в публичном конструкторе.
 func TestAnalyzerNewInvalidURL(t *testing.T) {
-	client := analyzer.New("not-a-url")
+	client := analyzer.New(cargo.NewClient("not-a-url"))
 	if client == nil {
 		t.Fatal("New() returned nil")
 	}
