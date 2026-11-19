@@ -19,12 +19,12 @@ type versionSelectionCase struct {
 func TestSelectVersion(t *testing.T) {
 	for _, tt := range validVersionSelectionCases() {
 		t.Run(tt.name, func(t *testing.T) {
-			got, err := (&Analyzer{}).selectVersion(tt.versions)
+			got, err := SelectVersion(tt.versions)
 			if err != nil {
-				t.Fatalf("selectVersion() failed: %v", err)
+				t.Fatalf("SelectVersion() failed: %v", err)
 			}
 			if got.Version != tt.want {
-				t.Errorf("selectVersion() version = %q, want %q", got.Version, tt.want)
+				t.Errorf("SelectVersion() version = %q, want %q", got.Version, tt.want)
 			}
 		})
 	}
@@ -65,15 +65,15 @@ func TestSelectVersionPreservesPackage(t *testing.T) {
 		{Name: "demo", Version: "2.0.0-beta"}, want, {Name: "demo", Version: "1.9.0"},
 	}
 	before := append([]domain.PackageVersion(nil), versions...)
-	got, err := (&Analyzer{}).selectVersion(versions)
+	got, err := SelectVersion(versions)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if !reflect.DeepEqual(got, want) {
-		t.Errorf("selectVersion() = %+v, want %+v", got, want)
+		t.Errorf("SelectVersion() = %+v, want %+v", got, want)
 	}
 	if !reflect.DeepEqual(versions, before) {
-		t.Errorf("selectVersion() changed input: %+v, want %+v", versions, before)
+		t.Errorf("SelectVersion() changed input: %+v, want %+v", versions, before)
 	}
 }
 
@@ -81,12 +81,12 @@ func TestSelectVersionPreservesPackage(t *testing.T) {
 func TestSelectVersionEqualPriority(t *testing.T) {
 	first := domain.PackageVersion{Name: "demo", Version: "1.0.0+first"}
 	second := domain.PackageVersion{Name: "demo", Version: "1.0.0+second"}
-	got, err := (&Analyzer{}).selectVersion([]domain.PackageVersion{first, second})
+	got, err := SelectVersion([]domain.PackageVersion{first, second})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if !reflect.DeepEqual(got, first) {
-		t.Errorf("selectVersion() = %+v, want first release %+v", got, first)
+		t.Errorf("SelectVersion() = %+v, want first release %+v", got, first)
 	}
 }
 
@@ -113,12 +113,12 @@ func TestSelectVersionErrors(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, err := (&Analyzer{}).selectVersion(tt.versions)
+			got, err := SelectVersion(tt.versions)
 			if err == nil || !strings.Contains(err.Error(), tt.wantError) {
-				t.Fatalf("selectVersion() error = %v, want %q", err, tt.wantError)
+				t.Fatalf("SelectVersion() error = %v, want %q", err, tt.wantError)
 			}
 			if !reflect.DeepEqual(got, domain.PackageVersion{}) {
-				t.Errorf("selectVersion() returned a package after an error: %+v", got)
+				t.Errorf("SelectVersion() returned a package after an error: %+v", got)
 			}
 		})
 	}

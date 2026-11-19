@@ -1,4 +1,4 @@
-// Package cargo загружает версии пакетов и их прямые зависимости из HTTP(S)-индекса Cargo.
+// Package cargo читает записи sparse-индекса Cargo и полные снимки в формате tar.gz.
 package cargo
 
 import (
@@ -28,8 +28,7 @@ type Client struct {
 	repoURL string
 }
 
-// NewClient создает клиент для базового HTTP(S)-адреса индекса Cargo.
-// Корректность адреса проверяется при вызове LoadVersions.
+// NewClient принимает базовый URL для LoadVersions или URL полного снимка для OpenIndex.
 func NewClient(url string) *Client {
 	return &Client{
 		client:  http.DefaultClient,
@@ -94,25 +93,48 @@ func (c *Client) buildURL(pkgName string) (string, error) {
 		return "", fmt.Errorf("%s: repository must be an HTTP(S) URL with a host", op)
 	}
 
+	return baseURL.JoinPath(indexPath(pkgName)).String(), nil
+}
+
+// indexPath возвращает относительный путь файла пакета по правилам индекса Cargo.
+func indexPath(pkgName string) string {
 	name := strings.ToLower(pkgName)
-	nameRunes := []rune(name)
-	var parts []string
-	switch len(nameRunes) {
+	chars := []rune(name)
+	switch len(chars) {
 	case singleCharNameLength:
-		parts = []string{"1"}
+		return "1/" + name
 	case doubleCharNameLength:
-		parts = []string{"2"}
+		return "2/" + name
 	case tripleCharNameLength:
-		parts = []string{"3", string(nameRunes[:singleCharNameLength])}
+		return "3/" + string(chars[:singleCharNameLength]) + "/" + name
 	default:
-		parts = []string{
-			string(nameRunes[:doubleCharNameLength]),
-			string(nameRunes[doubleCharNameLength : doubleCharNameLength*2]),
+		first := string(chars[:doubleCharNameLength])
+		second := string(chars[doubleCharNameLength : doubleCharNameLength*2])
+		return first + "/" + second + "/" + name
+	}
+}
+
+// OpenIndex открывает HTTP-поток архива полного индекса.
+// Вызывающий код должен закрыть поток после чтения.
+func (c *Client) OpenIndex(ctx context.Context) (io.ReadCloser, error) {
+	const op = "cargo.Client.OpenIndex"
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.repoURL, nil)
+	if err != nil {
+		return nil, fmt.Errorf("%s: %w", op, err)
+	}
+
+	resp, err := c.client.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("%s: %w", op, err)
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		if err = resp.Body.Close(); err != nil {
+			return nil, fmt.Errorf("%s: %w", op, err)
 		}
+		return nil, fmt.Errorf("%s: unexpected status: %d", op, resp.StatusCode)
 	}
-	parts = append(parts, name)
-	for i := range parts {
-		parts[i] = url.PathEscape(parts[i])
-	}
-	return baseURL.JoinPath(parts...).String(), nil
+
+	return resp.Body, nil
 }

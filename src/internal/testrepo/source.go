@@ -70,3 +70,17 @@ func (s *Source) LoadVersions(name string) ([]domain.PackageVersion, error) {
 	}
 	return []domain.PackageVersion{{Name: name, Version: "1.0.0", Dependencies: dependencies}}, nil
 }
+
+// VisitVersions передает обработчику каждый объявленный пакет, включая изолированные вершины.
+func (s *Source) VisitVersions(visit func([]domain.PackageVersion) error) error {
+	for name := range s.packages {
+		versions, err := s.LoadVersions(name)
+		if err != nil {
+			return err
+		}
+		if err := visit(versions); err != nil {
+			return err
+		}
+	}
+	return nil
+}

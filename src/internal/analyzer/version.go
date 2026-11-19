@@ -58,12 +58,17 @@ func CompareVersions(left, right string) (int, error) {
 	if err != nil {
 		return versionEqual, fmt.Errorf("%s: right version: %w", op, err)
 	}
+	return compareParsed(a, b), nil
+}
+
+// compareParsed сравнивает уже проверенные компоненты версий по правилам SemVer.
+func compareParsed(a, b semanticVersion) int {
 	for i := range a.core {
 		if order := compareNumericIdentifier(a.core[i], b.core[i]); order != versionEqual {
-			return order, nil
+			return order
 		}
 	}
-	return comparePrerelease(a.prerelease, b.prerelease), nil
+	return comparePrerelease(a.prerelease, b.prerelease)
 }
 
 // parseVersion проверяет формат SemVer и выделяет основные и предварительные компоненты.

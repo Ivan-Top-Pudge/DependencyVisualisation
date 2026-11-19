@@ -14,7 +14,8 @@ type PackageVersion struct {
 type Dependency struct {
 	Name        string `json:"name"`
 	Requirement string `json:"req"`
-	PackageName string `json:"package,omitempty"` // Настоящее имя при переименовании зависимости.
+	PackageName string `json:"package,omitempty"`  // Настоящее имя при переименовании зависимости.
+	Registry    string `json:"registry,omitempty"` // Пустое значение указывает на тот же индекс.
 }
 
 // PackageID различает вершины графа по имени и выбранной версии пакета.

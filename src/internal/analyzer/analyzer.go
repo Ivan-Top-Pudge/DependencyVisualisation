@@ -1,8 +1,8 @@
 package analyzer
 
 import (
+	"errors"
 	"fmt"
-	"slices"
 
 	"github.com/Ivan-Top-Pudge/DependencyVisualisation/src/internal/domain"
 )
@@ -34,7 +34,7 @@ func (a *Analyzer) PackageDependencies(name string) (domain.PackageVersion, erro
 		return domain.PackageVersion{}, fmt.Errorf("%s: %w", op, err)
 	}
 
-	selectedVersion, err := a.selectVersion(versions)
+	selectedVersion, err := SelectVersion(versions)
 	if err != nil {
 		return domain.PackageVersion{}, fmt.Errorf("%s: %w", op, err)
 	}
@@ -83,6 +83,7 @@ func (a *Analyzer) BuildGraph(name string, maxDepth int) (domain.Graph, error) {
 func (a *Analyzer) expandGraph(graph *domain.Graph, id domain.PackageID,
 	packages map[string]domain.PackageVersion) ([]domain.PackageID, error) {
 	var discovered []domain.PackageID
+	targets := make(map[domain.PackageID]bool)
 	for _, dep := range graph.Nodes[id].Dependencies {
 		pkg, loaded := packages[dep.Name]
 		if !loaded {
@@ -95,7 +96,8 @@ func (a *Analyzer) expandGraph(graph *domain.Graph, id domain.PackageID,
 			packages[pkg.Name] = pkg
 		}
 		target := domain.PackageID{Name: pkg.Name, Version: pkg.Version}
-		if !slices.Contains(graph.Edges[id], target) {
+		if !targets[target] {
+			targets[target] = true
 			graph.Edges[id] = append(graph.Edges[id], target)
 		}
 		if _, found := graph.Nodes[target]; !found {
@@ -106,13 +108,16 @@ func (a *Analyzer) expandGraph(graph *domain.Graph, id domain.PackageID,
 	return discovered, nil
 }
 
-// selectVersion выбирает максимальную неотозванную версию одного пакета без prerelease.
+// ErrNoRelease означает, что у пакета нет стабильной неотозванной версии.
+var ErrNoRelease = errors.New("no non-yanked release versions")
+
+// SelectVersion выбирает максимальную неотозванную версию одного пакета без prerelease.
 // При равном приоритете возвращается первый подходящий элемент вместе с его зависимостями.
 // Некорректный номер неотозванной версии или отсутствие подходящих версий дает ошибку.
-func (a *Analyzer) selectVersion(versions []domain.PackageVersion) (domain.PackageVersion, error) {
-	const op = "analyzer.Analyzer.selectVersion"
+func SelectVersion(versions []domain.PackageVersion) (domain.PackageVersion, error) {
+	const op = "analyzer.SelectVersion"
 	var best domain.PackageVersion
-	found := false
+	var bestVersion semanticVersion
 	for _, ver := range versions {
 		if ver.Yanked {
 			continue
@@ -124,20 +129,12 @@ func (a *Analyzer) selectVersion(versions []domain.PackageVersion) (domain.Packa
 		if len(parsed.prerelease) != noIdentifiers {
 			continue
 		}
-		if !found {
-			best, found = ver, true
-			continue
-		}
-		order, err := CompareVersions(ver.Version, best.Version)
-		if err != nil {
-			return domain.PackageVersion{}, fmt.Errorf("%s: %w", op, err)
-		}
-		if order == versionGreater {
-			best = ver
+		if best.Version == "" || compareParsed(parsed, bestVersion) == versionGreater {
+			best, bestVersion = ver, parsed
 		}
 	}
-	if !found {
-		return domain.PackageVersion{}, fmt.Errorf("%s: no non-yanked release versions", op)
+	if best.Version == "" {
+		return domain.PackageVersion{}, fmt.Errorf("%s: %w", op, ErrNoRelease)
 	}
 	return best, nil
 }
