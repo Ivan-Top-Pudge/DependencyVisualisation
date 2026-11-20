@@ -23,7 +23,6 @@ func WalkSnapshot(input io.Reader, visit func([]domain.PackageVersion) error) er
 	for {
 		header, err := archive.Next()
 		if err == io.EOF {
-			// Дочитать gzip до контрольной суммы после конца tar.
 			_, err = io.Copy(io.Discard, stream)
 			return err
 		}
