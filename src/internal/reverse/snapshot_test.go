@@ -1,19 +1,23 @@
-package main
+package reverse
 
 import (
 	"archive/tar"
 	"bytes"
 	"compress/gzip"
+	"context"
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"strings"
 	"testing"
 
-	"github.com/Ivan-Top-Pudge/DependencyVisualisation/src/internal/config"
+	"github.com/Ivan-Top-Pudge/DependencyVisualisation/src/internal/analyzer"
+	"github.com/Ivan-Top-Pudge/DependencyVisualisation/src/internal/cargo"
+	"github.com/Ivan-Top-Pudge/DependencyVisualisation/src/internal/domain"
 )
 
-// TestCargoSnapshot проверяет HTTP, чтение снимка, политику версий и обход через CLI.
+// TestCargoSnapshot проверяет HTTP, чтение снимка, политику версий и обратный обход.
 func TestCargoSnapshot(t *testing.T) {
 	files := map[string]string{
 		"index/config.json":     "служебный файл",
@@ -27,14 +31,16 @@ func TestCargoSnapshot(t *testing.T) {
 		"index/not/index/serde": "служебный файл",
 	}
 	url := snapshotServer(t, http.StatusOK, makeSnapshot(t, files))
-	cfg := config.Config{Package: "Serde", Repository: url, MaxDepth: 2}
-	var output strings.Builder
-	if err := run(cfg, &output); err != nil {
+	graph, err := snapshotGraph(url, "Serde")
+	if err != nil {
 		t.Fatal(err)
 	}
-	const want = "Обратные зависимости пакета serde 1.0.0:\n  Demo 1.10.0\n  app 0.1.0\n"
-	if output.String() != want {
-		t.Fatalf("получено %q, ожидалось %q", output.String(), want)
+	root := domain.PackageID{Name: "serde", Version: "1.0.0"}
+	demo := domain.PackageID{Name: "Demo", Version: "1.10.0"}
+	app := domain.PackageID{Name: "app", Version: "0.1.0"}
+	if graph.Root != root || !slices.Equal(graph.Edges[root], []domain.PackageID{demo}) ||
+		!slices.Equal(graph.Edges[demo], []domain.PackageID{app}) {
+		t.Fatalf("неверные обратные связи: %v", graph.Edges)
 	}
 }
 
@@ -65,11 +71,10 @@ func TestCargoSnapshotErrors(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			cfg := config.Config{Package: "a", Repository: snapshotServer(t, tt.status, tt.data)}
-			var output strings.Builder
-			err := run(cfg, &output)
-			if err == nil || !strings.Contains(err.Error(), tt.want) || output.String() != "" {
-				t.Errorf("получено %q, %v, ожидалась ошибка %q", output.String(), err, tt.want)
+			url := snapshotServer(t, tt.status, tt.data)
+			graph, err := snapshotGraph(url, "a")
+			if err == nil || !strings.Contains(err.Error(), tt.want) || graph.Nodes != nil {
+				t.Errorf("получено %v, %v, ожидалась ошибка %q", graph, err, tt.want)
 			}
 		})
 	}
@@ -125,4 +130,18 @@ func compressData(t *testing.T, data []byte) []byte {
 		t.Fatal(err)
 	}
 	return buf.Bytes()
+}
+
+// snapshotGraph загружает снимок и строит граф обратных зависимостей от корня на два уровня.
+func snapshotGraph(url, root string) (domain.Graph, error) {
+	stream, err := cargo.NewClient(url).OpenIndex(context.Background())
+	if err != nil {
+		return domain.Graph{}, err
+	}
+	defer stream.Close()
+	source := New()
+	if err := cargo.WalkSnapshot(stream, source.AddVersions); err != nil {
+		return domain.Graph{}, err
+	}
+	return analyzer.New(source).BuildGraph(root, 2)
 }

@@ -1,83 +1,53 @@
-// Команда visualiser выводит обратные зависимости пакета из заданного в INI репозитория.
+// Команда visualiser показывает граф зависимостей Cargo-пакета или вершины тестового репозитория.
 package main
 
 import (
-	"bufio"
-	"cmp"
-	"context"
 	"flag"
 	"fmt"
 	"io"
 	"os"
-	"slices"
 
 	"github.com/Ivan-Top-Pudge/DependencyVisualisation/src/internal/analyzer"
 	"github.com/Ivan-Top-Pudge/DependencyVisualisation/src/internal/cargo"
 	"github.com/Ivan-Top-Pudge/DependencyVisualisation/src/internal/config"
 	"github.com/Ivan-Top-Pudge/DependencyVisualisation/src/internal/domain"
-	"github.com/Ivan-Top-Pudge/DependencyVisualisation/src/internal/reverse"
 	"github.com/Ivan-Top-Pudge/DependencyVisualisation/src/internal/testrepo"
+	"github.com/Ivan-Top-Pudge/DependencyVisualisation/src/internal/visualize"
 )
 
-// main запускает поиск обратных зависимостей по INI-настройкам.
+// main запускает визуализацию по настройкам указанного INI-файла.
 func main() {
 	configPath := flag.String("config", "tests/example.ini", "Путь к файлу конфигурации")
 	flag.Parse()
-	if err := run(config.MustLoadConfig(*configPath), os.Stdout); err != nil {
-		fmt.Fprintf(os.Stderr, "Ошибка при поиске обратных зависимостей: %v\n", err)
+	if err := run(config.MustLoadConfig(*configPath), os.Stdout, visualize.Show); err != nil {
+		fmt.Fprintf(os.Stderr, "Ошибка визуализации: %v\n", err)
 		os.Exit(1)
 	}
 }
 
-// run строит индекс входящих ребер и обходит его от заданного пакета до max_depth.
-func run(cfg config.Config, output io.Writer) error {
-	source := reverse.New()
-	if err := visitRepository(cfg, source.AddVersions); err != nil {
-		return err
-	}
-	graph, err := analyzer.New(source).BuildGraph(cfg.Package, cfg.MaxDepth)
-	if err != nil {
-		return err
-	}
-	return printDependents(output, graph)
-}
-
-// visitRepository перебирает пакеты локального JSON-графа или HTTP-снимка индекса Cargo.
-func visitRepository(cfg config.Config, visit func([]domain.PackageVersion) error) error {
+// run строит обычный граф зависимостей, выводит запрошенное дерево и показывает диаграмму.
+func run(cfg config.Config, output io.Writer, show func(domain.Graph) (string, error)) error {
+	var source analyzer.PackageSource = cargo.NewClient(cfg.Repository)
 	if cfg.TestMode {
 		repo, err := testrepo.Load(cfg.Repository)
 		if err != nil {
 			return err
 		}
-		return repo.VisitVersions(visit)
+		source = repo
 	}
-	stream, err := cargo.NewClient(cfg.Repository).OpenIndex(context.Background())
+	graph, err := analyzer.New(source).BuildGraph(cfg.Package, cfg.MaxDepth)
 	if err != nil {
 		return err
 	}
-	defer stream.Close()
-	return cargo.WalkSnapshot(stream, visit)
-}
-
-// printDependents выводит найденные пакеты в порядке имен и версий, исключая корень.
-func printDependents(output io.Writer, graph domain.Graph) error {
-	const noDependents = 0
-	var ids []domain.PackageID
-	for id := range graph.Nodes {
-		if id != graph.Root {
-			ids = append(ids, id)
+	if cfg.ASCIITree {
+		if err := visualize.WriteTree(output, graph); err != nil {
+			return err
 		}
 	}
-	slices.SortFunc(ids, func(a, b domain.PackageID) int {
-		return cmp.Or(cmp.Compare(a.Name, b.Name), cmp.Compare(a.Version, b.Version))
-	})
-	w := bufio.NewWriter(output)
-	fmt.Fprintf(w, "Обратные зависимости пакета %s %s:\n", graph.Root.Name, graph.Root.Version)
-	if len(ids) == noDependents {
-		fmt.Fprintln(w, "  Не найдены.")
+	path, err := show(graph)
+	if err != nil {
+		return err
 	}
-	for _, id := range ids {
-		fmt.Fprintf(w, "  %s %s\n", id.Name, id.Version)
-	}
-	return w.Flush()
+	_, err = fmt.Fprintln(output, "SVG:", path)
+	return err
 }
